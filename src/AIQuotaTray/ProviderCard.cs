@@ -4,6 +4,8 @@ namespace AIQuotaTray;
 
 internal sealed class ProviderCard : Panel
 {
+    private const int CornerRadius = 12;
+
     private readonly Label _title = new();
     private readonly Label _status = new();
     private readonly Panel _windows = new();
@@ -30,6 +32,21 @@ internal sealed class ProviderCard : Panel
         Controls.Add(_status);
         Controls.Add(_windows);
         Height = 112;
+        UpdateRegion();
+    }
+
+    protected override void OnResize(EventArgs e)
+    {
+        base.OnResize(e);
+        UpdateRegion();
+    }
+
+    private void UpdateRegion()
+    {
+        if (Width <= 0 || Height <= 0) return;
+        using var path = RoundedRect.Path(new Rectangle(0, 0, Width, Height), CornerRadius);
+        Region?.Dispose();
+        Region = new Region(path);
     }
 
     public void UpdateSnapshot(ProviderSnapshot snapshot, DateTimeOffset now)

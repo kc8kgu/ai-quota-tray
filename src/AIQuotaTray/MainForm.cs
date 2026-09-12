@@ -17,8 +17,8 @@ internal sealed class MainForm : Form
     public MainForm(bool startWithWindows)
     {
         Text = "AIQuotaTray";
-        ClientSize = new Size(520, 640);
-        MinimumSize = new Size(480, 520);
+        ClientSize = new Size(560, 780);
+        MinimumSize = new Size(520, 680);
         StartPosition = FormStartPosition.CenterScreen;
         ShowInTaskbar = true;
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -140,10 +140,17 @@ internal sealed class MainForm : Form
         foreach (Control control in controls)
         {
             if (control is ProviderCard) continue;
-            if (control is Button)
+            if (control is Button button)
             {
-                control.BackColor = ThemeColors.Surface;
-                control.ForeColor = ThemeColors.Foreground;
+                button.BackColor = ThemeColors.Surface;
+                button.ForeColor = ThemeColors.Foreground;
+                button.FlatStyle = FlatStyle.Flat;
+                button.FlatAppearance.BorderSize = 1;
+                button.FlatAppearance.BorderColor = ThemeColors.Border;
+                button.FlatAppearance.MouseOverBackColor = ThemeColors.Hover;
+                button.FlatAppearance.MouseDownBackColor = ThemeColors.MutedSurface;
+                button.Cursor = Cursors.Hand;
+                button.Padding = new Padding(10, 6, 10, 6);
             }
             else if (control is not GaugeBar)
             {
