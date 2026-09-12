@@ -1,6 +1,19 @@
 using System.Text.Json;
 using AIQuotaTray.Core;
 
+const string UsageReport = """
+    You are currently using your subscription to power your Claude Code usage
+
+    Current session: 31% used · resets Sep 12, 1:20am (America/New_York)
+    Current week (all models): 5% used · resets Sep 17, 2am (America/New_York)
+
+    What's contributing to your limits usage?
+    Approximate, based on local sessions on this machine — does not include other devices or claude.ai.
+
+    Last 24h · 192 requests · 9 sessions
+      Top skills: /run 20%, /code-review 2%
+    """;
+
 var tests = new (string Name, Action Run)[]
 {
     ("Claude parses subscription windows", ClaudeParsesWindows),
@@ -9,7 +22,12 @@ var tests = new (string Name, Action Run)[]
     ("Expired window makes snapshot stale", ExpiredWindowIsStale),
     ("Duration labels are compact", DurationLabelsAreCompact),
     ("Lowest remaining ignores stale providers", LowestRemainingIgnoresStale),
-    ("Newest Claude observation wins", NewestObservationWins)
+    ("Newest Claude observation wins", NewestObservationWins),
+    ("Usage report parses both limit rows", UsageReportParsesRows),
+    ("Usage report resolves reset to UTC", UsageReportResolvesReset),
+    ("Usage report keeps a row with an unreadable reset", UsageReportKeepsUnreadableReset),
+    ("Usage report ignores prose", UsageReportIgnoresProse),
+    ("Usage report labels a model-specific week", UsageReportLabelsModelWeek)
 };
 
 var failed = 0;
@@ -29,6 +47,55 @@ foreach (var test in tests)
 
 Console.WriteLine($"{tests.Length - failed}/{tests.Length} tests passed");
 return failed == 0 ? 0 : 1;
+
+static void UsageReportParsesRows()
+{
+    var snapshot = ClaudeUsageTextParser.Parse(UsageReport, DateTimeOffset.Parse("2026-09-12T02:42:00Z"));
+    Equal(ProviderHealth.Available, snapshot.Health);
+    Equal(2, snapshot.Windows.Count);
+    Equal("five_hour", snapshot.Windows[0].Id);
+    Equal("5h", snapshot.Windows[0].Label);
+    Equal(31d, snapshot.Windows[0].UsedPercent);
+    Equal(69d, snapshot.Windows[0].RemainingPercent);
+    Equal("seven_day", snapshot.Windows[1].Id);
+    Equal("7d", snapshot.Windows[1].Label);
+}
+
+static void UsageReportResolvesReset()
+{
+    var snapshot = ClaudeUsageTextParser.Parse(UsageReport, DateTimeOffset.Parse("2026-09-12T02:42:00Z"));
+    // 1:20am America/New_York on Sep 12 is 05:20 UTC — the value the status line reported for five_hour.
+    Equal(DateTimeOffset.Parse("2026-09-12T05:20:00Z"), snapshot.Windows[0].ResetsAt);
+    Equal(DateTimeOffset.Parse("2026-09-17T06:00:00Z"), snapshot.Windows[1].ResetsAt);
+}
+
+static void UsageReportKeepsUnreadableReset()
+{
+    var snapshot = ClaudeUsageTextParser.Parse("Current session: 42% used · resets whenever it feels like it",
+        DateTimeOffset.Parse("2026-09-12T02:42:00Z"));
+    Equal(1, snapshot.Windows.Count);
+    Equal(null, snapshot.Windows[0].ResetsAt);
+    Equal(42d, snapshot.Windows[0].UsedPercent);
+}
+
+static void UsageReportIgnoresProse()
+{
+    const string prose = """
+        Top skills: /run 20%, /code-review 2%
+        Last 24h · 192 requests · 9 sessions
+        """;
+    var snapshot = ClaudeUsageTextParser.Parse(prose, DateTimeOffset.Parse("2026-09-12T02:42:00Z"));
+    Equal(0, snapshot.Windows.Count);
+    Equal(ProviderHealth.NotConfigured, snapshot.Health);
+}
+
+static void UsageReportLabelsModelWeek()
+{
+    var snapshot = ClaudeUsageTextParser.Parse("Current week (Opus): 12% used · resets Sep 17, 2am (America/New_York)",
+        DateTimeOffset.Parse("2026-09-12T02:42:00Z"));
+    Equal(1, snapshot.Windows.Count);
+    Equal("7d Opus", snapshot.Windows[0].Label);
+}
 
 static void ClaudeParsesWindows()
 {

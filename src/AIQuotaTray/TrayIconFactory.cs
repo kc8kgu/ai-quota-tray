@@ -1,3 +1,4 @@
+using System.Drawing.Drawing2D;
 using System.Runtime.InteropServices;
 
 namespace AIQuotaTray;
@@ -11,16 +12,15 @@ internal static class TrayIconFactory
         graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
         graphics.Clear(Color.Transparent);
 
-        using var background = new SolidBrush(Color.FromArgb(45, 48, 52));
-        using var fill = new SolidBrush(ThemeColors.Gauge(remaining));
-        using var outline = new Pen(Color.White, 2);
-        graphics.FillEllipse(background, 2, 2, 28, 28);
+        // A ring rather than a filled pie: at 16x16 (the actual taskbar size) a thick ring reads clearly as
+        // "how full", where a thin pie sliver or any small text becomes an unreadable smudge.
+        using var track = new Pen(Color.FromArgb(70, 255, 255, 255), 5);
+        using var fill = new Pen(ThemeColors.Gauge(remaining), 5) { StartCap = LineCap.Round, EndCap = LineCap.Round };
+        var ring = new Rectangle(4, 4, 24, 24);
+        graphics.DrawEllipse(track, ring);
 
-        var sweep = remaining is null ? 0f : (float)(360d * remaining.Value / 100d);
-        if (sweep > 0) graphics.FillPie(fill, 5, 5, 22, 22, -90, sweep);
-        graphics.DrawEllipse(outline, 3, 3, 26, 26);
-        using var font = new Font("Segoe UI", 7, FontStyle.Bold);
-        graphics.DrawString("AI", font, Brushes.White, new PointF(9, 10));
+        var sweep = remaining is null ? 0f : (float)Math.Max(2d, 360d * remaining.Value / 100d);
+        graphics.DrawArc(fill, ring, -90, sweep);
 
         var handle = bitmap.GetHicon();
         try

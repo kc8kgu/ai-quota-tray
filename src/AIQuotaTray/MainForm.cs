@@ -4,11 +4,14 @@ namespace AIQuotaTray;
 
 internal sealed class MainForm : Form
 {
-    private readonly ProviderCard _codexCard = new("Codex");
-    private readonly ProviderCard _claudeCard = new("Claude");
+    private const string RefreshIdleText = "Refresh now";
+    private const string RefreshBusyText = "Refreshing…";
+
+    private readonly ProviderCard _codexCard = new("Codex", ThemeColors.CodexAccent);
+    private readonly ProviderCard _claudeCard = new("Claude", ThemeColors.ClaudeAccent);
     private readonly Panel _cards = new();
+    private readonly Button _refresh = new() { Text = RefreshIdleText, AutoSize = true, Margin = new Padding(0, 0, 8, 0), Tag = "primary" };
     private readonly CheckBox _startWithWindows = new();
-    private readonly Label _claudeIntegration = new();
     public event EventHandler? RefreshRequested;
     public event EventHandler? CodexLoginRequested;
     public event EventHandler? OpenClaudeRequested;
@@ -28,13 +31,12 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill,
             Padding = new Padding(20),
             ColumnCount = 1,
-            RowCount = 6
+            RowCount = 5
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
@@ -69,13 +71,12 @@ internal sealed class MainForm : Form
             WrapContents = true,
             Margin = new Padding(0, 12, 0, 12)
         };
-        var refresh = new Button { Text = "Refresh now", AutoSize = true, Margin = new Padding(0, 0, 8, 0) };
-        refresh.Click += (_, _) => RefreshRequested?.Invoke(this, EventArgs.Empty);
+        _refresh.Click += (_, _) => RefreshRequested?.Invoke(this, EventArgs.Empty);
         var signIn = new Button { Text = "Sign in to Codex", AutoSize = true, Margin = new Padding(0, 0, 8, 0) };
         signIn.Click += (_, _) => CodexLoginRequested?.Invoke(this, EventArgs.Empty);
         var openClaude = new Button { Text = "Open Claude Code", AutoSize = true, Margin = new Padding(0) };
         openClaude.Click += (_, _) => OpenClaudeRequested?.Invoke(this, EventArgs.Empty);
-        actions.Controls.Add(refresh);
+        actions.Controls.Add(_refresh);
         actions.Controls.Add(signIn);
         actions.Controls.Add(openClaude);
 
@@ -85,28 +86,29 @@ internal sealed class MainForm : Form
         _startWithWindows.Margin = new Padding(0, 0, 0, 8);
         _startWithWindows.CheckedChanged += (_, _) => StartWithWindowsChanged?.Invoke(this, _startWithWindows.Checked);
 
-        _claudeIntegration.AutoSize = true;
-        _claudeIntegration.Margin = new Padding(0);
-
         root.Controls.Add(heading, 0, 0);
         root.Controls.Add(subtitle, 0, 1);
         root.Controls.Add(_cards, 0, 2);
         root.Controls.Add(actions, 0, 3);
         root.Controls.Add(_startWithWindows, 0, 4);
-        root.Controls.Add(_claudeIntegration, 0, 5);
         Controls.Add(root);
 
         FormClosing += OnFormClosing;
         ApplyTheme();
     }
 
+    /// A refresh can finish without changing a single displayed value, so the button itself carries the
+    /// only proof that the click was heard.
+    public void SetRefreshing(bool refreshing)
+    {
+        _refresh.Enabled = !refreshing;
+        _refresh.Text = refreshing ? RefreshBusyText : RefreshIdleText;
+    }
+
     public void UpdateSnapshot(ApplicationSnapshot snapshot, DateTimeOffset now)
     {
         _codexCard.UpdateSnapshot(snapshot.Codex, now);
         _claudeCard.UpdateSnapshot(snapshot.Claude, now);
-        _claudeIntegration.Text = ClaudeIntegrationService.IsConfigured()
-            ? "Claude status-line bridge: configured"
-            : "Claude status-line bridge: configuration needed";
         ResizeCards();
         ApplyTheme();
     }
@@ -142,15 +144,26 @@ internal sealed class MainForm : Form
             if (control is ProviderCard) continue;
             if (control is Button button)
             {
-                button.BackColor = ThemeColors.Surface;
-                button.ForeColor = ThemeColors.Foreground;
+                var isPrimary = button.Tag as string == "primary";
                 button.FlatStyle = FlatStyle.Flat;
-                button.FlatAppearance.BorderSize = 1;
+                button.FlatAppearance.BorderSize = isPrimary ? 0 : 1;
                 button.FlatAppearance.BorderColor = ThemeColors.Border;
-                button.FlatAppearance.MouseOverBackColor = ThemeColors.Hover;
-                button.FlatAppearance.MouseDownBackColor = ThemeColors.MutedSurface;
                 button.Cursor = Cursors.Hand;
-                button.Padding = new Padding(10, 6, 10, 6);
+                button.Padding = new Padding(12, 7, 12, 7);
+                if (isPrimary)
+                {
+                    button.BackColor = ThemeColors.Blue;
+                    button.ForeColor = Color.White;
+                    button.FlatAppearance.MouseOverBackColor = ControlPaint.Light(ThemeColors.Blue, 0.15f);
+                    button.FlatAppearance.MouseDownBackColor = ControlPaint.Dark(ThemeColors.Blue, 0.1f);
+                }
+                else
+                {
+                    button.BackColor = ThemeColors.Surface;
+                    button.ForeColor = ThemeColors.Foreground;
+                    button.FlatAppearance.MouseOverBackColor = ThemeColors.Hover;
+                    button.FlatAppearance.MouseDownBackColor = ThemeColors.MutedSurface;
+                }
             }
             else if (control is not GaugeBar)
             {

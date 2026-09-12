@@ -6,32 +6,63 @@ internal sealed class ProviderCard : Panel
 {
     private const int CornerRadius = 12;
 
+    private readonly Color _accent;
+    private readonly AccentDot _dot = new();
     private readonly Label _title = new();
-    private readonly Label _status = new();
-    private readonly Panel _windows = new();
-
-    public ProviderCard(string title)
+    private readonly StatusPill _statusPill = new();
+    private readonly Label _statusDetail = new();
+    private readonly Panel _header = new();
+    private readonly FlowLayoutPanel _windows = new()
     {
-        Padding = new Padding(16);
+        FlowDirection = FlowDirection.TopDown,
+        WrapContents = false,
+        AutoSize = true,
+        AutoSizeMode = AutoSizeMode.GrowAndShrink,
+        Margin = new Padding(0, 14, 0, 0)
+    };
+
+    public ProviderCard(string title, Color accent)
+    {
+        _accent = accent;
+        Padding = new Padding(18, 16, 18, 18);
         Margin = new Padding(0, 0, 0, 12);
         AutoSize = false;
         Dock = DockStyle.Top;
 
+        _dot.FillColor = accent;
+        _dot.Location = new Point(0, 5);
+
         _title.Text = title;
-        _title.Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 14, FontStyle.Bold);
+        _title.Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 13, FontStyle.Bold);
         _title.AutoSize = true;
-        _title.Location = new Point(16, 14);
+        _title.Location = new Point(_dot.Right + 8, 0);
 
-        _status.AutoSize = true;
-        _status.Location = new Point(17, 44);
+        _statusPill.StatusText = "…";
+        _statusPill.Location = new Point(0, 0);
 
-        _windows.Location = new Point(16, 72);
-        _windows.Width = 420;
+        _header.Height = 24;
+        _header.Margin = new Padding(0);
+        _header.Controls.Add(_dot);
+        _header.Controls.Add(_title);
+        _header.Controls.Add(_statusPill);
 
-        Controls.Add(_title);
-        Controls.Add(_status);
-        Controls.Add(_windows);
-        Height = 112;
+        _statusDetail.AutoSize = true;
+        _statusDetail.Margin = new Padding(0, 6, 0, 0);
+
+        var top = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Dock = DockStyle.Top,
+            Margin = new Padding(0)
+        };
+        top.Controls.Add(_header);
+        top.Controls.Add(_statusDetail);
+        top.Controls.Add(_windows);
+
+        Controls.Add(top);
         UpdateRegion();
     }
 
@@ -52,70 +83,91 @@ internal sealed class ProviderCard : Panel
     public void UpdateSnapshot(ProviderSnapshot snapshot, DateTimeOffset now)
     {
         var effectiveHealth = SnapshotRules.EffectiveHealth(snapshot, now);
+        var kind = HealthKind(effectiveHealth);
         var age = UsageFormatting.RelativeAge(snapshot.ObservedAt, now);
-        _status.Text = effectiveHealth == ProviderHealth.Available
-            ? $"Connected · updated {age}"
-            : $"{HealthText(effectiveHealth)} · {snapshot.StatusMessage}";
-        _status.ForeColor = effectiveHealth == ProviderHealth.Available ? ThemeColors.MutedText : ThemeColors.Gauge(null);
+
+        _statusPill.StatusText = kind == ProviderHealthKind.Available ? "CONNECTED" : HealthText(effectiveHealth).ToUpperInvariant();
+        _statusPill.Accent = ThemeColors.Status(kind);
+        _statusDetail.Text = kind == ProviderHealthKind.Available
+            ? $"Updated {age}"
+            : snapshot.StatusMessage;
+        _statusDetail.ForeColor = kind == ProviderHealthKind.Available ? ThemeColors.MutedText : ThemeColors.Status(kind);
+        RepositionHeader();
 
         _windows.SuspendLayout();
         _windows.Controls.Clear();
-        var top = 4;
         foreach (var window in snapshot.Windows)
         {
-            var row = CreateWindowRow(window, now, effectiveHealth == ProviderHealth.Available, _windows.Width);
-            row.Location = new Point(0, top);
-            _windows.Controls.Add(row);
-            top = row.Bottom + 8;
+            _windows.Controls.Add(CreateWindowRow(window, now, kind == ProviderHealthKind.Available, _windows.Width));
         }
 
         if (snapshot.Windows.Count == 0)
         {
-            var empty = new Label
+            _windows.Controls.Add(new Label
             {
                 Text = "No usage windows available",
                 AutoSize = true,
-                ForeColor = ThemeColors.MutedText,
-                Location = new Point(0, top)
-            };
-            _windows.Controls.Add(empty);
-            top = empty.Bottom + 8;
+                ForeColor = ThemeColors.MutedText
+            });
         }
-        _windows.Height = top;
-        Height = snapshot.Windows.Count == 0 ? 116 : 84 + (snapshot.Windows.Count * 84);
         _windows.ResumeLayout();
+
         ApplyTheme();
+        AutoFitHeight();
     }
 
     public void SetContentWidth(int width)
     {
         Width = width;
-        _windows.Width = Math.Max(280, width - 32);
+        var innerWidth = Math.Max(240, width - Padding.Horizontal);
+        _header.Width = innerWidth;
+        RepositionHeader();
         foreach (Control row in _windows.Controls)
         {
-            row.Width = _windows.Width;
             foreach (Control control in row.Controls)
             {
-                if (control is GaugeBar) control.Width = _windows.Width;
+                if (control is GaugeBar gauge) gauge.Width = innerWidth;
             }
         }
+        AutoFitHeight();
+    }
+
+    private void RepositionHeader()
+    {
+        _statusPill.Location = new Point(Math.Max(_title.Right + 8, _header.Width - _statusPill.Width), 0);
+    }
+
+    private void AutoFitHeight()
+    {
+        // The content flows top-down and reports its own preferred height; reading it back here means
+        // this card never needs a hand-maintained "rows * row height" formula to size itself.
+        var contentTop = Controls[0];
+        Height = contentTop.Bottom + Padding.Bottom;
+        UpdateRegion();
     }
 
     private static Control CreateWindowRow(UsageWindow window, DateTimeOffset now, bool trustworthy, int width)
     {
-        var panel = new Panel { Width = width, Height = 76, Margin = new Padding(0, 4, 0, 4) };
+        var row = new FlowLayoutPanel
+        {
+            FlowDirection = FlowDirection.TopDown,
+            WrapContents = false,
+            AutoSize = true,
+            AutoSizeMode = AutoSizeMode.GrowAndShrink,
+            Margin = new Padding(0, 0, 0, 14)
+        };
         var remaining = new Label
         {
-            Text = $"{window.Label}   {UsageFormatting.Percent(window.RemainingPercent)} remaining",
-            Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 11, FontStyle.Bold),
+            Text = $"{window.Label}   ·   {UsageFormatting.Percent(window.RemainingPercent)} remaining",
+            Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 10.5f, FontStyle.Bold),
             AutoSize = true,
-            Location = new Point(0, 0)
+            Margin = new Padding(0, 0, 0, 4)
         };
         var used = new Label
         {
             Text = $"{UsageFormatting.Percent(window.UsedPercent)} used · {UsageFormatting.ResetText(window.ResetsAt, now)}",
             AutoSize = true,
-            Location = new Point(0, 27),
+            Margin = new Padding(0, 0, 0, 8),
             ForeColor = ThemeColors.MutedText
         };
         var gauge = new GaugeBar
@@ -123,30 +175,45 @@ internal sealed class ProviderCard : Panel
             Width = width,
             Value = trustworthy ? window.RemainingPercent : 0,
             FillColor = trustworthy ? ThemeColors.Gauge(window.RemainingPercent) : ThemeColors.Gray,
-            Location = new Point(0, 54),
+            Margin = new Padding(0),
             AccessibleName = $"{window.Label} remaining usage",
             AccessibleDescription = $"{UsageFormatting.Percent(window.RemainingPercent)} remaining"
         };
-        panel.Controls.Add(remaining);
-        panel.Controls.Add(used);
-        panel.Controls.Add(gauge);
-        return panel;
+        row.Controls.Add(remaining);
+        row.Controls.Add(used);
+        row.Controls.Add(gauge);
+        return row;
     }
 
     private void ApplyTheme()
     {
         BackColor = ThemeColors.Surface;
         _title.ForeColor = ThemeColors.Foreground;
-        foreach (Control control in _windows.Controls)
+        _title.BackColor = ThemeColors.Surface;
+        _dot.BackColor = ThemeColors.Surface;
+        _header.BackColor = ThemeColors.Surface;
+        _statusDetail.BackColor = ThemeColors.Surface;
+        foreach (Control row in _windows.Controls)
         {
-            control.BackColor = ThemeColors.Surface;
-            foreach (Control child in control.Controls)
+            row.BackColor = ThemeColors.Surface;
+            foreach (Control child in row.Controls)
             {
                 if (child is not GaugeBar && child.ForeColor != ThemeColors.MutedText) child.ForeColor = ThemeColors.Foreground;
                 child.BackColor = ThemeColors.Surface;
             }
         }
     }
+
+    private static ProviderHealthKind HealthKind(ProviderHealth health) => health switch
+    {
+        ProviderHealth.Available => ProviderHealthKind.Available,
+        ProviderHealth.Connecting => ProviderHealthKind.Connecting,
+        ProviderHealth.Stale => ProviderHealthKind.Attention,
+        ProviderHealth.SignInRequired => ProviderHealthKind.Attention,
+        ProviderHealth.NotConfigured => ProviderHealthKind.Connecting,
+        ProviderHealth.CliNotFound => ProviderHealthKind.Error,
+        _ => ProviderHealthKind.Error
+    };
 
     private static string HealthText(ProviderHealth health) => health switch
     {

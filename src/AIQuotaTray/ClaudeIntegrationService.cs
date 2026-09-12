@@ -14,13 +14,34 @@ internal static class ClaudeIntegrationService
         {
             if (!File.Exists(SettingsPath)) return false;
             var root = JsonNode.Parse(File.ReadAllText(SettingsPath));
-            return root?["statusLine"]?["command"]?.GetValue<string>()?.Contains(
-                "--claude-statusline", StringComparison.OrdinalIgnoreCase) == true;
+            var command = root?["statusLine"]?["command"]?.GetValue<string>();
+            if (command?.Contains("--claude-statusline", StringComparison.OrdinalIgnoreCase) != true) return false;
+
+            // A command naming a program that no longer exists renders nothing and writes no snapshot, so
+            // the settings entry alone is not proof: the bridge counts as configured only while the
+            // executable it points at is still on disk. Checking that here is what lets startup notice a
+            // moved or renamed install and rewrite the command instead of reporting a bridge that is dead.
+            return BridgeExecutable(command) is { } executable && File.Exists(executable);
         }
         catch (Exception exception) when (exception is IOException or JsonException)
         {
             return false;
         }
+    }
+
+    /// Pulls the program out of a status-line command line. Configure writes the path quoted, so the
+    /// unquoted branch is a best effort for a hand-edited entry.
+    internal static string? BridgeExecutable(string command)
+    {
+        command = command.Trim();
+        if (command.StartsWith('"'))
+        {
+            var end = command.IndexOf('"', 1);
+            return end > 1 ? command[1..end] : null;
+        }
+
+        var space = command.IndexOf(' ');
+        return space > 0 ? command[..space] : null;
     }
 
     public static void Configure()

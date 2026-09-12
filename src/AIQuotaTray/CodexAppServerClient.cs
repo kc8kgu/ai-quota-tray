@@ -20,9 +20,14 @@ internal sealed class CodexAppServerClient : IAsyncDisposable
 
     public event EventHandler<ProviderSnapshot>? SnapshotChanged;
 
-    public async Task RefreshAsync(CancellationToken cancellationToken = default)
+    /// <param name="waitIfBusy">
+    /// When a refresh is already running, <c>false</c> drops this one (right for background pushes that
+    /// would otherwise pile up) and <c>true</c> queues behind it, so an explicit request always fetches.
+    /// </param>
+    public async Task RefreshAsync(bool waitIfBusy = false, CancellationToken cancellationToken = default)
     {
-        if (!await _refreshGate.WaitAsync(0, cancellationToken)) return;
+        if (waitIfBusy) await _refreshGate.WaitAsync(cancellationToken);
+        else if (!await _refreshGate.WaitAsync(0, cancellationToken)) return;
         try
         {
             await EnsureStartedAsync(cancellationToken);
@@ -179,7 +184,7 @@ internal sealed class CodexAppServerClient : IAsyncDisposable
                 if (root.TryGetProperty("method", out var method) &&
                     method.GetString() == "account/rateLimits/updated")
                 {
-                    _ = Task.Run(() => RefreshAsync(cancellationToken), cancellationToken);
+                    _ = Task.Run(() => RefreshAsync(false, cancellationToken), cancellationToken);
                 }
             }
 

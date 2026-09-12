@@ -25,7 +25,7 @@ internal sealed class GaugeBar : Control
 
     public GaugeBar()
     {
-        Height = 8;
+        Height = 10;
         SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
         AccessibleRole = AccessibleRole.ProgressBar;
     }

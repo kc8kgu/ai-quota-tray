@@ -24,6 +24,11 @@ internal static class ThemeColors
     public static Color Amber => Color.FromArgb(221, 145, 22);
     public static Color Red => Color.FromArgb(211, 65, 65);
     public static Color Gray => Color.FromArgb(125, 130, 138);
+    public static Color Blue => Color.FromArgb(58, 130, 214);
+
+    // Per-provider accent, used for the identity dot next to each card's title and the primary action button.
+    public static Color CodexAccent => Color.FromArgb(16, 163, 127);
+    public static Color ClaudeAccent => Color.FromArgb(204, 120, 92);
 
     public static Color Gauge(double? remaining) => remaining switch
     {
@@ -32,5 +37,25 @@ internal static class ThemeColors
         >= 20 => Amber,
         _ => Red
     };
+
+    // Distinct color per connection state, so "stale" and "sign-in required" read differently at a glance
+    // instead of only differing by their text.
+    public static Color Status(ProviderHealthKind kind) => kind switch
+    {
+        ProviderHealthKind.Available => Green,
+        ProviderHealthKind.Attention => Amber,
+        ProviderHealthKind.Error => Red,
+        ProviderHealthKind.Connecting => Blue,
+        _ => Gray
+    };
+}
+
+internal enum ProviderHealthKind
+{
+    Available,
+    Connecting,
+    Attention,
+    Error,
+    Unknown
 }
 
