@@ -10,18 +10,16 @@ internal sealed class MainForm : Form
     private readonly ProviderCard _codexCard = new("Codex", ThemeColors.CodexAccent);
     private readonly ProviderCard _claudeCard = new("Claude", ThemeColors.ClaudeAccent);
     private readonly Panel _cards = new();
-    private readonly Button _refresh = new() { Text = RefreshIdleText, AutoSize = true, Margin = new Padding(0, 0, 8, 0), Tag = "primary" };
-    private readonly CheckBox _startWithWindows = new();
+    private readonly Button _refresh = new() { Text = RefreshIdleText, Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 8), Tag = "primary" };
     public event EventHandler? RefreshRequested;
     public event EventHandler? CodexLoginRequested;
     public event EventHandler? OpenClaudeRequested;
-    public event EventHandler<bool>? StartWithWindowsChanged;
 
-    public MainForm(bool startWithWindows)
+    public MainForm()
     {
         Text = "AIQuotaTray";
-        ClientSize = new Size(560, 780);
-        MinimumSize = new Size(520, 680);
+        ClientSize = new Size(560, 720);
+        MinimumSize = new Size(520, 640);
         StartPosition = FormStartPosition.CenterScreen;
         ShowInTaskbar = true;
         AutoScaleMode = AutoScaleMode.Dpi;
@@ -31,13 +29,12 @@ internal sealed class MainForm : Form
             Dock = DockStyle.Fill,
             Padding = new Padding(20),
             ColumnCount = 1,
-            RowCount = 5
+            RowCount = 4
         };
         root.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
-        root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
         root.RowStyles.Add(new RowStyle(SizeType.AutoSize));
 
         var heading = new Label
@@ -63,34 +60,34 @@ internal sealed class MainForm : Form
         _cards.Controls.Add(_claudeCard);
         _cards.ClientSizeChanged += (_, _) => ResizeCards();
 
-        var actions = new FlowLayoutPanel
+        var actions = new TableLayoutPanel
         {
             AutoSize = true,
             Dock = DockStyle.Fill,
-            FlowDirection = FlowDirection.LeftToRight,
-            WrapContents = true,
-            Margin = new Padding(0, 12, 0, 12)
+            ColumnCount = 2,
+            RowCount = 2,
+            Margin = new Padding(0, 12, 0, 0),
+            Padding = new Padding(0),
+            GrowStyle = TableLayoutPanelGrowStyle.FixedSize
         };
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        actions.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 50));
+        actions.RowStyles.Add(new RowStyle(SizeType.Absolute, 52));
+        actions.RowStyles.Add(new RowStyle(SizeType.Absolute, 44));
         _refresh.Click += (_, _) => RefreshRequested?.Invoke(this, EventArgs.Empty);
-        var signIn = new Button { Text = "Sign in to Codex", AutoSize = true, Margin = new Padding(0, 0, 8, 0) };
+        var signIn = new Button { Text = "Sign in to Codex", Dock = DockStyle.Fill, Margin = new Padding(0, 0, 4, 0) };
         signIn.Click += (_, _) => CodexLoginRequested?.Invoke(this, EventArgs.Empty);
-        var openClaude = new Button { Text = "Open Claude Code", AutoSize = true, Margin = new Padding(0) };
+        var openClaude = new Button { Text = "Open Claude Code", Dock = DockStyle.Fill, Margin = new Padding(4, 0, 0, 0) };
         openClaude.Click += (_, _) => OpenClaudeRequested?.Invoke(this, EventArgs.Empty);
-        actions.Controls.Add(_refresh);
-        actions.Controls.Add(signIn);
-        actions.Controls.Add(openClaude);
-
-        _startWithWindows.Text = "Start AIQuotaTray with Windows";
-        _startWithWindows.AutoSize = true;
-        _startWithWindows.Checked = startWithWindows;
-        _startWithWindows.Margin = new Padding(0, 0, 0, 8);
-        _startWithWindows.CheckedChanged += (_, _) => StartWithWindowsChanged?.Invoke(this, _startWithWindows.Checked);
+        actions.Controls.Add(_refresh, 0, 0);
+        actions.SetColumnSpan(_refresh, 2);
+        actions.Controls.Add(signIn, 0, 1);
+        actions.Controls.Add(openClaude, 1, 1);
 
         root.Controls.Add(heading, 0, 0);
         root.Controls.Add(subtitle, 0, 1);
         root.Controls.Add(_cards, 0, 2);
         root.Controls.Add(actions, 0, 3);
-        root.Controls.Add(_startWithWindows, 0, 4);
         Controls.Add(root);
 
         FormClosing += OnFormClosing;
@@ -115,7 +112,21 @@ internal sealed class MainForm : Form
 
     private void ResizeCards()
     {
-        var width = Math.Max(320, _cards.ClientSize.Width - SystemInformation.VerticalScrollBarWidth - 4);
+        var width = AvailableCardWidth();
+        ResizeCardsTo(width);
+        _cards.PerformLayout();
+
+        // Adding the cards can make the vertical scrollbar appear. Re-evaluate once so the cards
+        // reserve the gutter only when it is real, keeping the outer margins visually symmetric.
+        var settledWidth = AvailableCardWidth();
+        if (settledWidth != width) ResizeCardsTo(settledWidth);
+    }
+
+    private int AvailableCardWidth() => Math.Max(320,
+        _cards.ClientSize.Width - (_cards.VerticalScroll.Visible ? SystemInformation.VerticalScrollBarWidth : 0));
+
+    private void ResizeCardsTo(int width)
+    {
         _codexCard.SetContentWidth(width);
         _claudeCard.SetContentWidth(width);
         _codexCard.Location = Point.Empty;

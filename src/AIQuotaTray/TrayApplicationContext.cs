@@ -10,6 +10,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
     private readonly ClaudeUsageClient _claudeClient = new();
     private readonly MainForm _window;
     private readonly NotifyIcon _trayIcon;
+    private readonly ToolStripMenuItem _startWithWindowsItem;
     private readonly System.Windows.Forms.Timer _timer;
     private AppSettings _settings;
     private ApplicationSnapshot _snapshot;
@@ -34,17 +35,23 @@ internal sealed class TrayApplicationContext : ApplicationContext
             startWithWindows = StartupService.IsEnabled();
         }
         catch (UnauthorizedAccessException) { }
-        _window = new MainForm(startWithWindows);
+        _window = new MainForm();
         _window.RefreshRequested += async (_, _) => await RefreshAllAsync(userInitiated: true);
         _window.CodexLoginRequested += async (_, _) => await SignInToCodexAsync();
         _window.OpenClaudeRequested += (_, _) => OpenClaude();
-        _window.StartWithWindowsChanged += (_, enabled) => SetStartWithWindows(enabled);
         _window.FormClosed += (_, _) => ExitThread();
 
         var menu = new ContextMenuStrip();
         var openItem = (ToolStripMenuItem)menu.Items.Add("Open AIQuotaTray", null, (_, _) => ShowWindow());
         openItem.Font = new Font(menu.Font, FontStyle.Bold); // matches the double-click default action
         menu.Items.Add("Refresh now", null, async (_, _) => await RefreshAllAsync(userInitiated: true));
+        _startWithWindowsItem = new ToolStripMenuItem("Start with Windows")
+        {
+            Checked = startWithWindows,
+            CheckOnClick = false
+        };
+        _startWithWindowsItem.Click += (_, _) => SetStartWithWindows(!_startWithWindowsItem.Checked);
+        menu.Items.Add(_startWithWindowsItem);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Exit AIQuotaTray", null, (_, _) => Exit());
 
@@ -183,6 +190,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
             StartupService.SetEnabled(enabled);
             _settings = _settings with { StartWithWindows = enabled };
             _settings.Save();
+            _startWithWindowsItem.Checked = enabled;
         }
         catch (UnauthorizedAccessException)
         {

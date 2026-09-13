@@ -1,5 +1,3 @@
-using System.Drawing.Drawing2D;
-
 namespace AIQuotaTray;
 
 internal sealed class GaugeBar : Control
@@ -42,17 +40,18 @@ internal sealed class GaugeBar : Control
         base.OnPaint(e);
         if (Width <= 0 || Height <= 0) return;
 
-        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
-        using var pill = RoundedRect.Path(ClientRectangle, Height / 2);
-        var previousClip = e.Graphics.Clip;
-        e.Graphics.SetClip(pill, CombineMode.Intersect);
+        e.Graphics.SmoothingMode = System.Drawing.Drawing2D.SmoothingMode.AntiAlias;
+        var bounds = new Rectangle(0, 0, Width - 1, Height - 1);
+        if (bounds.Width <= 0 || bounds.Height <= 0) return;
 
+        using var track = RoundedRect.Path(bounds, bounds.Height / 2);
         using var background = new SolidBrush(ThemeColors.MutedSurface);
-        e.Graphics.FillRectangle(background, ClientRectangle);
-        using var fill = new SolidBrush(FillColor);
-        e.Graphics.FillRectangle(fill, new Rectangle(0, 0, (int)Math.Round(Width * Value / 100d), Height));
+        e.Graphics.FillPath(background, track);
 
-        e.Graphics.Clip = previousClip;
+        var fillWidth = (int)Math.Round(bounds.Width * Value / 100d);
+        if (fillWidth <= 0) return;
+        using var filled = RoundedRect.Path(new Rectangle(bounds.X, bounds.Y, fillWidth, bounds.Height), bounds.Height / 2);
+        using var fill = new SolidBrush(FillColor);
+        e.Graphics.FillPath(fill, filled);
     }
 }
-

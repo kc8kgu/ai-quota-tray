@@ -1,4 +1,5 @@
 using AIQuotaTray.Core;
+using System.Drawing.Drawing2D;
 
 namespace AIQuotaTray;
 
@@ -18,16 +19,17 @@ internal sealed class ProviderCard : Panel
         WrapContents = false,
         AutoSize = true,
         AutoSizeMode = AutoSizeMode.GrowAndShrink,
-        Margin = new Padding(0, 14, 0, 0)
+        Margin = new Padding(0, 6, 0, 0)
     };
 
     public ProviderCard(string title, Color accent)
     {
         _accent = accent;
-        Padding = new Padding(18, 16, 18, 18);
+        Padding = new Padding(18, 14, 18, 14);
         Margin = new Padding(0, 0, 0, 12);
         AutoSize = false;
         Dock = DockStyle.Top;
+        SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
 
         _dot.FillColor = accent;
         _dot.Location = new Point(0, 5);
@@ -47,7 +49,7 @@ internal sealed class ProviderCard : Panel
         _header.Controls.Add(_statusPill);
 
         _statusDetail.AutoSize = true;
-        _statusDetail.Margin = new Padding(0, 6, 0, 0);
+        _statusDetail.Margin = new Padding(_title.Left, 2, 0, 0);
 
         var top = new FlowLayoutPanel
         {
@@ -58,6 +60,7 @@ internal sealed class ProviderCard : Panel
             Dock = DockStyle.Top,
             Margin = new Padding(0)
         };
+        top.BackColor = ThemeColors.Surface;
         top.Controls.Add(_header);
         top.Controls.Add(_statusDetail);
         top.Controls.Add(_windows);
@@ -70,6 +73,18 @@ internal sealed class ProviderCard : Panel
     {
         base.OnResize(e);
         UpdateRegion();
+    }
+
+    protected override void OnPaint(PaintEventArgs e)
+    {
+        base.OnPaint(e);
+        if (Width <= 1 || Height <= 1) return;
+        e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
+        using var rail = new SolidBrush(_accent);
+        e.Graphics.FillRectangle(rail, 0, 0, 5, Height);
+        using var path = RoundedRect.Path(new Rectangle(0, 0, Width - 1, Height - 1), CornerRadius);
+        using var border = new Pen(ThemeColors.Border);
+        e.Graphics.DrawPath(border, path);
     }
 
     private void UpdateRegion()
@@ -95,10 +110,19 @@ internal sealed class ProviderCard : Panel
         RepositionHeader();
 
         _windows.SuspendLayout();
-        _windows.Controls.Clear();
-        foreach (var window in snapshot.Windows)
+        while (_windows.Controls.Count > 0)
         {
-            _windows.Controls.Add(CreateWindowRow(window, now, kind == ProviderHealthKind.Available, _windows.Width));
+            var control = _windows.Controls[0];
+            _windows.Controls.RemoveAt(0);
+            control.Dispose();
+        }
+        for (var index = 0; index < snapshot.Windows.Count; index++)
+        {
+            _windows.Controls.Add(new UsageWindowRow(snapshot.Windows[index], now, kind == ProviderHealthKind.Available)
+            {
+                Width = _windows.Width,
+                ShowDivider = index < snapshot.Windows.Count - 1
+            });
         }
 
         if (snapshot.Windows.Count == 0)
@@ -106,8 +130,12 @@ internal sealed class ProviderCard : Panel
             _windows.Controls.Add(new Label
             {
                 Text = "No usage windows available",
-                AutoSize = true,
-                ForeColor = ThemeColors.MutedText
+                AutoSize = false,
+                Height = 42,
+                Width = _windows.Width,
+                TextAlign = ContentAlignment.MiddleLeft,
+                ForeColor = ThemeColors.MutedText,
+                Margin = new Padding(0)
             });
         }
         _windows.ResumeLayout();
@@ -121,14 +149,10 @@ internal sealed class ProviderCard : Panel
         Width = width;
         var innerWidth = Math.Max(240, width - Padding.Horizontal);
         _header.Width = innerWidth;
+        _statusDetail.MaximumSize = new Size(Math.Max(80, innerWidth - _statusDetail.Margin.Left), 0);
         RepositionHeader();
-        foreach (Control row in _windows.Controls)
-        {
-            foreach (Control control in row.Controls)
-            {
-                if (control is GaugeBar gauge) gauge.Width = innerWidth;
-            }
-        }
+        _windows.Width = innerWidth;
+        foreach (Control row in _windows.Controls) row.Width = innerWidth;
         AutoFitHeight();
     }
 
@@ -146,43 +170,131 @@ internal sealed class ProviderCard : Panel
         UpdateRegion();
     }
 
-    private static Control CreateWindowRow(UsageWindow window, DateTimeOffset now, bool trustworthy, int width)
+    private sealed class UsageWindowRow : Panel
     {
-        var row = new FlowLayoutPanel
+        private readonly Label _period;
+        private readonly Label _remaining;
+        private readonly Label _used;
+        private readonly Panel _verticalDivider;
+        private readonly Panel _horizontalDivider = new()
         {
-            FlowDirection = FlowDirection.TopDown,
-            WrapContents = false,
-            AutoSize = true,
-            AutoSizeMode = AutoSizeMode.GrowAndShrink,
-            Margin = new Padding(0, 0, 0, 14)
+            Dock = DockStyle.Bottom,
+            Height = 1,
+            Visible = false,
+            Tag = "divider"
         };
-        var remaining = new Label
+
+        public bool ShowDivider
         {
-            Text = $"{window.Label}   ·   {UsageFormatting.Percent(window.RemainingPercent)} remaining",
-            Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 10.5f, FontStyle.Bold),
-            AutoSize = true,
-            Margin = new Padding(0, 0, 0, 4)
-        };
-        var used = new Label
+            get => _horizontalDivider.Visible;
+            init => _horizontalDivider.Visible = value;
+        }
+
+        public UsageWindowRow(UsageWindow window, DateTimeOffset now, bool trustworthy)
         {
-            Text = $"{UsageFormatting.Percent(window.UsedPercent)} used · {UsageFormatting.ResetText(window.ResetsAt, now)}",
-            AutoSize = true,
-            Margin = new Padding(0, 0, 0, 8),
-            ForeColor = ThemeColors.MutedText
-        };
-        var gauge = new GaugeBar
+            Height = 78;
+            Margin = new Padding(0);
+            SetStyle(ControlStyles.AllPaintingInWmPaint | ControlStyles.OptimizedDoubleBuffer | ControlStyles.UserPaint, true);
+
+            var layout = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 3,
+                RowCount = 1,
+                Margin = new Padding(0),
+                Padding = new Padding(0)
+            };
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 48));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Absolute, 1));
+            layout.ColumnStyles.Add(new ColumnStyle(SizeType.Percent, 100));
+
+            _period = new Label
+            {
+                Text = window.Label,
+                Dock = DockStyle.Fill,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 11.5f, FontStyle.Bold),
+                Margin = new Padding(0)
+            };
+            _verticalDivider = new Panel
+            {
+                Dock = DockStyle.Fill,
+                Margin = new Padding(0, 12, 0, 12),
+                Tag = "divider"
+            };
+
+            var metric = new TableLayoutPanel
+            {
+                Dock = DockStyle.Fill,
+                ColumnCount = 1,
+                RowCount = 3,
+                Margin = new Padding(0),
+                Padding = new Padding(16, 3, 0, 7)
+            };
+            metric.RowStyles.Add(new RowStyle(SizeType.Absolute, 24));
+            metric.RowStyles.Add(new RowStyle(SizeType.Absolute, 22));
+            metric.RowStyles.Add(new RowStyle(SizeType.Absolute, 8));
+
+            _remaining = new Label
+            {
+                Text = $"{UsageFormatting.Percent(window.RemainingPercent)} remaining",
+                Dock = DockStyle.Fill,
+                AutoEllipsis = true,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 11, FontStyle.Bold),
+                Margin = new Padding(0)
+            };
+            _used = new Label
+            {
+                Text = $"{UsageFormatting.Percent(window.UsedPercent)} used · {UsageFormatting.ResetText(window.ResetsAt, now)}",
+                Dock = DockStyle.Fill,
+                AutoEllipsis = true,
+                TextAlign = ContentAlignment.MiddleLeft,
+                Margin = new Padding(0)
+            };
+            var gauge = new GaugeBar
+            {
+                Dock = DockStyle.Top,
+                Height = 6,
+                Value = trustworthy ? window.RemainingPercent : 0,
+                FillColor = trustworthy ? ThemeColors.Gauge(window.RemainingPercent) : ThemeColors.Gray,
+                Margin = new Padding(0),
+                AccessibleName = $"{window.Label} remaining usage",
+                AccessibleDescription = $"{UsageFormatting.Percent(window.RemainingPercent)} remaining"
+            };
+
+            metric.Controls.Add(_remaining, 0, 0);
+            metric.Controls.Add(_used, 0, 1);
+            metric.Controls.Add(gauge, 0, 2);
+            layout.Controls.Add(_period, 0, 0);
+            layout.Controls.Add(_verticalDivider, 1, 0);
+            layout.Controls.Add(metric, 2, 0);
+            Controls.Add(layout);
+            Controls.Add(_horizontalDivider);
+            _horizontalDivider.BringToFront();
+            ApplyTheme();
+        }
+
+        public void ApplyTheme()
         {
-            Width = width,
-            Value = trustworthy ? window.RemainingPercent : 0,
-            FillColor = trustworthy ? ThemeColors.Gauge(window.RemainingPercent) : ThemeColors.Gray,
-            Margin = new Padding(0),
-            AccessibleName = $"{window.Label} remaining usage",
-            AccessibleDescription = $"{UsageFormatting.Percent(window.RemainingPercent)} remaining"
-        };
-        row.Controls.Add(remaining);
-        row.Controls.Add(used);
-        row.Controls.Add(gauge);
-        return row;
+            BackColor = ThemeColors.Surface;
+            _period.ForeColor = ThemeColors.Foreground;
+            _remaining.ForeColor = ThemeColors.Foreground;
+            _used.ForeColor = ThemeColors.MutedText;
+            _verticalDivider.BackColor = ThemeColors.Border;
+            _horizontalDivider.BackColor = ThemeColors.Border;
+            ApplyBackground(Controls);
+            Invalidate();
+        }
+
+        private static void ApplyBackground(Control.ControlCollection controls)
+        {
+            foreach (Control control in controls)
+            {
+                if (control is not GaugeBar && control.Tag as string != "divider") control.BackColor = ThemeColors.Surface;
+                ApplyBackground(control.Controls);
+            }
+        }
     }
 
     private void ApplyTheme()
@@ -193,15 +305,22 @@ internal sealed class ProviderCard : Panel
         _dot.BackColor = ThemeColors.Surface;
         _header.BackColor = ThemeColors.Surface;
         _statusDetail.BackColor = ThemeColors.Surface;
+        _windows.BackColor = ThemeColors.Surface;
         foreach (Control row in _windows.Controls)
         {
             row.BackColor = ThemeColors.Surface;
+            if (row is UsageWindowRow usageRow)
+            {
+                usageRow.ApplyTheme();
+                continue;
+            }
             foreach (Control child in row.Controls)
             {
                 if (child is not GaugeBar && child.ForeColor != ThemeColors.MutedText) child.ForeColor = ThemeColors.Foreground;
                 child.BackColor = ThemeColors.Surface;
             }
         }
+        Invalidate();
     }
 
     private static ProviderHealthKind HealthKind(ProviderHealth health) => health switch
