@@ -1,4 +1,6 @@
 using System.Text.Json;
+using System.Reflection;
+using System.Security.Cryptography;
 using AIQuotaTray.Core;
 
 const string UsageReport = """
@@ -27,7 +29,8 @@ var tests = new (string Name, Action Run)[]
     ("Usage report resolves reset to UTC", UsageReportResolvesReset),
     ("Usage report keeps a row with an unreadable reset", UsageReportKeepsUnreadableReset),
     ("Usage report ignores prose", UsageReportIgnoresProse),
-    ("Usage report labels a model-specific week", UsageReportLabelsModelWeek)
+    ("Usage report labels a model-specific week", UsageReportLabelsModelWeek),
+    ("Main window starts with the quota icon", MainWindowStartsWithQuotaIcon)
 };
 
 var failed = 0;
@@ -95,6 +98,47 @@ static void UsageReportLabelsModelWeek()
         DateTimeOffset.Parse("2026-09-12T02:42:00Z"));
     Equal(1, snapshot.Windows.Count);
     Equal("7d Opus", snapshot.Windows[0].Label);
+}
+
+static void MainWindowStartsWithQuotaIcon()
+{
+    Exception? failure = null;
+    var thread = new Thread(() =>
+    {
+        try
+        {
+            var assembly = Assembly.Load("AIQuotaTray");
+            var formType = assembly.GetType("AIQuotaTray.MainForm", throwOnError: true)!;
+            var factoryType = assembly.GetType("AIQuotaTray.TrayIconFactory", throwOnError: true)!;
+            using var form = (Form)Activator.CreateInstance(formType, nonPublic: true)!;
+            using var expected = (Icon)factoryType.GetMethod("Create", BindingFlags.Public | BindingFlags.Static)!
+                .Invoke(null, [null])!;
+
+            Equal(IconFingerprint(expected), IconFingerprint(form.Icon ?? throw new InvalidOperationException("Main form has no icon.")));
+        }
+        catch (Exception exception)
+        {
+            failure = exception;
+        }
+    });
+    thread.SetApartmentState(ApartmentState.STA);
+    thread.Start();
+    thread.Join();
+    if (failure is not null) throw failure;
+}
+
+static string IconFingerprint(Icon icon)
+{
+    using var bitmap = icon.ToBitmap();
+    var pixels = new byte[bitmap.Width * bitmap.Height * sizeof(int)];
+    var offset = 0;
+    for (var y = 0; y < bitmap.Height; y++)
+    for (var x = 0; x < bitmap.Width; x++)
+    {
+        BitConverter.TryWriteBytes(pixels.AsSpan(offset), bitmap.GetPixel(x, y).ToArgb());
+        offset += sizeof(int);
+    }
+    return Convert.ToHexString(SHA256.HashData(pixels));
 }
 
 static void ClaudeParsesWindows()

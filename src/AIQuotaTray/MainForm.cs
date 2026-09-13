@@ -11,12 +11,15 @@ internal sealed class MainForm : Form
     private readonly ProviderCard _claudeCard = new("Claude", ThemeColors.ClaudeAccent);
     private readonly Panel _cards = new();
     private readonly Button _refresh = new() { Text = RefreshIdleText, Dock = DockStyle.Fill, Margin = new Padding(0, 0, 0, 8), Tag = "primary" };
+    private Icon _ownedIcon;
     public event EventHandler? RefreshRequested;
     public event EventHandler? CodexLoginRequested;
     public event EventHandler? OpenClaudeRequested;
 
     public MainForm()
     {
+        _ownedIcon = TrayIconFactory.Create(null);
+        Icon = _ownedIcon;
         Text = "AI Quota Tray";
         ClientSize = new Size(560, 720);
         MinimumSize = new Size(520, 640);
@@ -110,6 +113,15 @@ internal sealed class MainForm : Form
         ApplyTheme();
     }
 
+    public void UpdateIcon(Icon icon)
+    {
+        var nextIcon = (Icon)icon.Clone();
+        Icon = nextIcon;
+        var oldIcon = _ownedIcon;
+        _ownedIcon = nextIcon;
+        oldIcon.Dispose();
+    }
+
     private void ResizeCards()
     {
         var width = AvailableCardWidth();
@@ -183,5 +195,11 @@ internal sealed class MainForm : Form
             }
             ApplyColors(control.Controls);
         }
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        base.Dispose(disposing);
+        if (disposing) _ownedIcon.Dispose();
     }
 }

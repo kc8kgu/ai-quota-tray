@@ -147,6 +147,7 @@ internal sealed class TrayApplicationContext : ApplicationContext
         var oldIcon = _dynamicIcon;
         _dynamicIcon = nextIcon;
         _trayIcon.Icon = nextIcon;
+        _window.UpdateIcon(nextIcon);
         oldIcon?.Dispose();
         _trayIcon.Text = BuildTooltip(now);
     }
