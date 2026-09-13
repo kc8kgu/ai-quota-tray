@@ -42,9 +42,9 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _window.FormClosed += (_, _) => ExitThread();
 
         var menu = new ContextMenuStrip();
-        var openItem = (ToolStripMenuItem)menu.Items.Add("Open AIQuotaTray", null, (_, _) => ShowWindow());
+        var openItem = (ToolStripMenuItem)menu.Items.Add("Open AI Quota Tray", null, (_, _) => ShowWindow());
         openItem.Font = new Font(menu.Font, FontStyle.Bold); // matches the double-click default action
-        menu.Items.Add("Refresh now", null, async (_, _) => await RefreshAllAsync(userInitiated: true));
+        // menu.Items.Add("Refresh now", null, async (_, _) => await RefreshAllAsync(userInitiated: true));
         _startWithWindowsItem = new ToolStripMenuItem("Start with Windows")
         {
             Checked = startWithWindows,
@@ -53,13 +53,13 @@ internal sealed class TrayApplicationContext : ApplicationContext
         _startWithWindowsItem.Click += (_, _) => SetStartWithWindows(!_startWithWindowsItem.Checked);
         menu.Items.Add(_startWithWindowsItem);
         menu.Items.Add(new ToolStripSeparator());
-        menu.Items.Add("Exit AIQuotaTray", null, (_, _) => Exit());
+        menu.Items.Add("Exit AI Quota Tray", null, (_, _) => Exit());
 
         _trayIcon = new NotifyIcon
         {
             ContextMenuStrip = menu,
             Visible = true,
-            Text = "AIQuotaTray"
+            Text = "AI Quota Tray"
         };
         _trayIcon.DoubleClick += (_, _) => ShowWindow();
 
@@ -156,10 +156,10 @@ internal sealed class TrayApplicationContext : ApplicationContext
         static string ProviderText(ProviderSnapshot provider, DateTimeOffset timestamp)
         {
             if (SnapshotRules.EffectiveHealth(provider, timestamp) != ProviderHealth.Available) return "--";
-            return string.Join("/", provider.Windows.Select(window => UsageFormatting.Percent(window.RemainingPercent)));
+            return string.Join(" / ", provider.Windows.Select(window => UsageFormatting.Percent(window.RemainingPercent)));
         }
 
-        var tooltip = $"AIQuotaTray | Codex {ProviderText(_snapshot.Codex, now)} | Claude {ProviderText(_snapshot.Claude, now)}";
+        var tooltip = $"Codex {ProviderText(_snapshot.Codex, now)} — Claude {ProviderText(_snapshot.Claude, now)}";
         return tooltip.Length <= 63 ? tooltip : tooltip[..63];
     }
 

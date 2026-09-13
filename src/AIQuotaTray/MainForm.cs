@@ -17,7 +17,7 @@ internal sealed class MainForm : Form
 
     public MainForm()
     {
-        Text = "AIQuotaTray";
+        Text = "AI Quota Tray";
         ClientSize = new Size(560, 720);
         MinimumSize = new Size(520, 640);
         StartPosition = FormStartPosition.CenterScreen;
@@ -39,7 +39,7 @@ internal sealed class MainForm : Form
 
         var heading = new Label
         {
-            Text = "AI subscription usage",
+            Text = "AI Subscription Usage",
             Font = new Font((SystemFonts.MessageBoxFont ?? Control.DefaultFont).FontFamily, 18, FontStyle.Bold),
             AutoSize = true,
             Margin = new Padding(0, 0, 0, 2)
